@@ -17,7 +17,7 @@ This repository is a clean REST API consumed by the separate web and mobile fron
 | Auth | JWT (access + refresh tokens), bcrypt |
 | File Storage | Local filesystem (dev) — swappable for S3/R2 |
 | Text Extraction | pdf-parse, tesseract.js (OCR), mammoth |
-| AI | Anthropic Claude API (`claude-sonnet-4-6`) |
+| AI | OpenAI API (`gpt-4`, `text-embedding-3-small`) |
 | Docs | Swagger / OpenAPI at `/api/docs` |
 | Tests | Jest (unit) + Supertest (e2e) |
 
@@ -89,7 +89,7 @@ Server starts on `http://localhost:3000` (or `$PORT`).
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `JWT_ACCESS_SECRET` | Yes | Secret for signing access tokens |
 | `JWT_REFRESH_SECRET` | Yes | Secret for signing refresh tokens |
-| `ANTHROPIC_API_KEY` | Yes | API key from console.anthropic.com |
+| `OPENAI_API_KEY` | Yes | API key from platform.openai.com |
 | `STORAGE_PATH` | Yes | Local directory for uploaded files (e.g. `./uploads`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (e.g. `http://localhost:3001`) |
 
@@ -137,9 +137,10 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 ### Implemented
 - [x] Project scaffolding, Docker, health endpoint (Task 1)
 - [x] Prisma schema (User, Document, Analysis, RiskFlag, ChatMessage, LegalSource + pgvector), migrations, seed (Task 2)
+- [x] JWT authentication — register, login, refresh, GET /auth/me; JwtAuthGuard + CurrentUser decorator (Task 3)
 
 ### Planned
-- [ ] Authentication module — JWT register/login/refresh (Task 3)
+- [ ] User module — plan-based usage tracking (Task 4)
 - [ ] Authentication module — JWT register/login/refresh (Task 3)
 - [ ] User module — plan-based usage tracking (Task 4)
 - [ ] File storage module + document upload (Task 5)
