@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lexai_postgres
+    environment:
+      POSTGRES_USER: lexai
+      POSTGRES_PASSWORD: lexai_password
+      POSTGRES_DB: lexai_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lexai -d lexai_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    name: lexai_pgdata
