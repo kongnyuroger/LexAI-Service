@@ -55,7 +55,7 @@ Edit `.env` and fill in all values. See the [Environment Variables](#environment
 docker compose up -d
 ```
 
-This starts a `pgvector/pgvector:pg16` container on port `5432` with persistent volume `lexai_pgdata`.
+This starts a `pgvector/pgvector:pg16` container on **port `5433`** (mapped to avoid conflicts with a local PostgreSQL on the default 5432) with persistent volume `lexai_pgdata`.
 
 ### 4. Run database migrations
 
@@ -136,9 +136,10 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 
 ### Implemented
 - [x] Project scaffolding, Docker, health endpoint (Task 1)
+- [x] Prisma schema (User, Document, Analysis, RiskFlag, ChatMessage, LegalSource + pgvector), migrations, seed (Task 2)
 
 ### Planned
-- [ ] Prisma schema & migrations (Task 2)
+- [ ] Authentication module — JWT register/login/refresh (Task 3)
 - [ ] Authentication module — JWT register/login/refresh (Task 3)
 - [ ] User module — plan-based usage tracking (Task 4)
 - [ ] File storage module + document upload (Task 5)

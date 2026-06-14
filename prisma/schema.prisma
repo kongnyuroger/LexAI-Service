@@ -1,0 +1,109 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Plan {
+  FREE
+  PREMIUM
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  TEXT_EXTRACTED
+  ANALYZED
+  FAILED
+}
+
+enum Severity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  fullName     String
+  plan         Plan          @default(FREE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  documents    Document[]
+  chatMessages ChatMessage[]
+}
+
+model Document {
+  id               String         @id @default(uuid())
+  userId           String
+  originalFilename String
+  fileType         String
+  storagePath      String
+  status           DocumentStatus @default(UPLOADED)
+  extractedText    String?        @db.Text
+  createdAt        DateTime       @default(now())
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis         Analysis?
+  riskFlags        RiskFlag[]
+  chatMessages     ChatMessage[]
+}
+
+model Analysis {
+  id             String   @id @default(uuid())
+  documentId     String   @unique
+  summary        Json
+  parties        String[]
+  importantDates String[]
+  moneyDetails   String[]
+  createdAt      DateTime @default(now())
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model RiskFlag {
+  id         String   @id @default(uuid())
+  documentId String
+  severity   Severity
+  clauseText String   @db.Text
+  explanation String  @db.Text
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id         String      @id @default(uuid())
+  documentId String
+  userId     String
+  role       MessageRole
+  content    String      @db.Text
+  createdAt  DateTime    @default(now())
+  document   Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// LegalSource stores chunked legal texts with pgvector embeddings for RAG.
+// Dimension 1536 is compatible with common embedding models (Task 9).
+model LegalSource {
+  id           String                    @id @default(uuid())
+  title        String
+  jurisdiction String
+  sourceType   String
+  content      String                    @db.Text
+  embedding    Unsupported("vector(1536)")?
+  createdAt    DateTime                  @default(now())
+}

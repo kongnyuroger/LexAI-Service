@@ -36,3 +36,5 @@ npm-debug.log*
 test-results/
 # Claude Code
 .claude/
+
+/generated/prisma
