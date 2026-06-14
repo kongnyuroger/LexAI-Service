@@ -140,9 +140,10 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] JWT authentication — register, login, refresh, GET /auth/me; JwtAuthGuard + CurrentUser decorator (Task 3)
 - [x] User module — GET /users/me/usage (plan limits: FREE=3/month, PREMIUM=unlimited) + UsageLimitGuard (Task 4)
 - [x] File storage module (abstract StorageService → LocalStorageService) + POST /documents/upload + GET /documents/:id (Task 5)
+- [x] Text extraction pipeline: pdf-parse for text PDFs, pdftoppm+tesseract.js OCR fallback for scanned PDFs, tesseract.js for images, mammoth for DOCX; status → TEXT_EXTRACTED (Task 6)
 
 ### Planned
-- [ ] Text extraction & OCR pipeline (Task 6)
+- [ ] Claude API integration — summarization & risk detection (Task 7)
 - [ ] Authentication module — JWT register/login/refresh (Task 3)
 - [ ] User module — plan-based usage tracking (Task 4)
 - [ ] File storage module + document upload (Task 5)
