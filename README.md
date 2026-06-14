@@ -139,9 +139,10 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] Prisma schema (User, Document, Analysis, RiskFlag, ChatMessage, LegalSource + pgvector), migrations, seed (Task 2)
 - [x] JWT authentication — register, login, refresh, GET /auth/me; JwtAuthGuard + CurrentUser decorator (Task 3)
 - [x] User module — GET /users/me/usage (plan limits: FREE=3/month, PREMIUM=unlimited) + UsageLimitGuard (Task 4)
+- [x] File storage module (abstract StorageService → LocalStorageService) + POST /documents/upload + GET /documents/:id (Task 5)
 
 ### Planned
-- [ ] File storage module + document upload (Task 5)
+- [ ] Text extraction & OCR pipeline (Task 6)
 - [ ] Authentication module — JWT register/login/refresh (Task 3)
 - [ ] User module — plan-based usage tracking (Task 4)
 - [ ] File storage module + document upload (Task 5)
