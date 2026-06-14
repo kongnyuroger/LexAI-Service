@@ -1,14 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { TextExtractionService } from '../document-processing/text-extraction.service';
+import { AnalysisService } from '../ai/analysis.service';
+import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 
 const mockPrisma = {
+  $transaction: jest.fn(),
   document: {
     create: jest.fn(),
     update: jest.fn(),
     findFirst: jest.fn(),
+  },
+  analysis: {
+    upsert: jest.fn(),
+    findUnique: jest.fn(),
+  },
+  riskFlag: {
+    create: jest.fn(),
+    deleteMany: jest.fn(),
+    findMany: jest.fn(),
   },
 };
 
@@ -18,6 +31,15 @@ const mockStorage = {
 
 const mockExtraction = {
   extract: jest.fn().mockResolvedValue('Extracted text from the document.'),
+};
+
+const mockAnalysis = {
+  analyzeText: jest.fn(),
+};
+
+const mockKb = {
+  search: jest.fn().mockResolvedValue([]),
+  formatContext: jest.fn().mockReturnValue(''),
 };
 
 const mockFile: Express.Multer.File = {
@@ -43,6 +65,8 @@ describe('DocumentsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorage },
         { provide: TextExtractionService, useValue: mockExtraction },
+        { provide: AnalysisService, useValue: mockAnalysis },
+        { provide: KnowledgeBaseService, useValue: mockKb },
       ],
     }).compile();
 
@@ -119,6 +143,123 @@ describe('DocumentsService', () => {
       mockPrisma.document.findFirst.mockResolvedValue(null);
       const result = await service.findOne('doc-1', 'other-user');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('analyze', () => {
+    const analysisResult = {
+      summary: {
+        purpose: 'Employment contract',
+        mainParties: ['Employer', 'Employee'],
+        importantDates: ['2024-01-01'],
+        moneyInvolved: ['50,000 XAF'],
+        responsibilities: ['Pay salary'],
+      },
+      riskFlags: [
+        { severity: 'HIGH', clauseText: 'No notice period.', explanation: 'Risky.' },
+      ],
+    };
+
+    const savedAnalysis = {
+      id: 'analysis-1',
+      documentId: 'doc-1',
+      summary: analysisResult.summary,
+      parties: ['Employer', 'Employee'],
+      importantDates: ['2024-01-01'],
+      moneyDetails: ['50,000 XAF'],
+      createdAt: new Date(),
+    };
+
+    it('throws NotFoundException when document does not exist', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue(null);
+
+      await expect(service.analyze('doc-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws UnprocessableEntityException when document has no extracted text', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        status: 'PROCESSING',
+        extractedText: null,
+      });
+
+      await expect(service.analyze('doc-1', 'user-1')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('throws UnprocessableEntityException when document status is FAILED', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        status: 'FAILED',
+        extractedText: null,
+      });
+
+      await expect(service.analyze('doc-1', 'user-1')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('calls AnalysisService and persists results via $transaction', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue({
+        id: 'doc-1',
+        status: 'TEXT_EXTRACTED',
+        extractedText: 'Contract text here.',
+      });
+      mockAnalysis.analyzeText.mockResolvedValue(analysisResult);
+      mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+        fn(mockPrisma),
+      );
+      mockPrisma.analysis.upsert.mockResolvedValue(savedAnalysis);
+      mockPrisma.riskFlag.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.riskFlag.create.mockResolvedValue({ id: 'rf-1' });
+      mockPrisma.document.update.mockResolvedValue({ status: 'ANALYZED' });
+
+      const result = await service.analyze('doc-1', 'user-1');
+
+      // legalContext is '' (empty from mockKb), which converts to undefined via || operator
+      expect(mockAnalysis.analyzeText).toHaveBeenCalledWith('Contract text here.', undefined);
+      expect(mockPrisma.analysis.upsert).toHaveBeenCalled();
+      expect(mockPrisma.riskFlag.deleteMany).toHaveBeenCalledWith({ where: { documentId: 'doc-1' } });
+      expect(mockPrisma.riskFlag.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.document.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'ANALYZED' } }),
+      );
+      expect(result.riskFlags).toHaveLength(1);
+    });
+  });
+
+  describe('findAnalysis', () => {
+    it('throws NotFoundException when document does not exist', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue(null);
+
+      await expect(service.findAnalysis('doc-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException when no analysis exists yet', async () => {
+      mockPrisma.document.findFirst.mockResolvedValue({ id: 'doc-1' });
+      mockPrisma.analysis.findUnique.mockResolvedValue(null);
+
+      await expect(service.findAnalysis('doc-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('returns analysis with riskFlags', async () => {
+      const savedAnalysis = { id: 'a-1', documentId: 'doc-1', summary: {}, parties: [] };
+      const savedFlags = [{ id: 'rf-1', severity: 'HIGH', clauseText: 'clause', explanation: 'bad' }];
+
+      mockPrisma.document.findFirst.mockResolvedValue({ id: 'doc-1' });
+      mockPrisma.analysis.findUnique.mockResolvedValue(savedAnalysis);
+      mockPrisma.riskFlag.findMany.mockResolvedValue(savedFlags);
+
+      const result = await service.findAnalysis('doc-1', 'user-1');
+
+      expect(result.riskFlags).toEqual(savedFlags);
     });
   });
 });

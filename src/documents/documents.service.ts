@@ -1,8 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { TextExtractionService } from '../document-processing/text-extraction.service';
+import { AnalysisService } from '../ai/analysis.service';
+import { KnowledgeBaseService } from '../knowledge-base/knowledge-base.service';
 
 // TODO (production): move text extraction to a background job queue
 // (e.g. BullMQ) so the upload response returns immediately and extraction
@@ -15,6 +22,8 @@ export class DocumentsService {
     private prisma: PrismaService,
     private storage: StorageService,
     private extraction: TextExtractionService,
+    private analysis: AnalysisService,
+    private kb: KnowledgeBaseService,
   ) {}
 
   async upload(file: Express.Multer.File, userId: string) {
@@ -70,5 +79,99 @@ export class DocumentsService {
         // extractedText intentionally omitted — use /analyze for AI results
       },
     });
+  }
+
+  async analyze(documentId: string, userId: string) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, userId },
+    });
+
+    if (!doc) throw new NotFoundException('Document not found');
+
+    if (doc.status === 'FAILED') {
+      throw new UnprocessableEntityException(
+        'Document processing failed. Please re-upload the document.',
+      );
+    }
+
+    if (!doc.extractedText) {
+      throw new UnprocessableEntityException(
+        'Document text has not been extracted yet. Please try again shortly.',
+      );
+    }
+
+    // Enrich analysis with relevant legal provisions from the knowledge base
+    const kbResults = await this.kb.search(doc.extractedText.slice(0, 1000));
+    const legalContext = this.kb.formatContext(kbResults);
+
+    const result = await this.analysis.analyzeText(doc.extractedText, legalContext || undefined);
+
+    return this.prisma.$transaction(async (tx) => {
+      const savedAnalysis = await tx.analysis.upsert({
+        where: { documentId },
+        create: {
+          documentId,
+          summary: result.summary as object,
+          parties: result.summary.mainParties,
+          importantDates: result.summary.importantDates,
+          moneyDetails: result.summary.moneyInvolved,
+        },
+        update: {
+          summary: result.summary as object,
+          parties: result.summary.mainParties,
+          importantDates: result.summary.importantDates,
+          moneyDetails: result.summary.moneyInvolved,
+        },
+      });
+
+      // Replace any existing risk flags (re-analysis scenario)
+      await tx.riskFlag.deleteMany({ where: { documentId } });
+
+      const riskFlags = await Promise.all(
+        result.riskFlags.map((flag) =>
+          tx.riskFlag.create({
+            data: {
+              documentId,
+              severity: flag.severity,
+              clauseText: flag.clauseText,
+              explanation: flag.explanation,
+            },
+          }),
+        ),
+      );
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: { status: 'ANALYZED' },
+      });
+
+      return { ...savedAnalysis, riskFlags };
+    });
+  }
+
+  async findAnalysis(documentId: string, userId: string) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, userId },
+      select: { id: true },
+    });
+
+    if (!doc) throw new NotFoundException('Document not found');
+
+    const savedAnalysis = await this.prisma.analysis.findUnique({
+      where: { documentId },
+    });
+
+    if (!savedAnalysis) {
+      throw new NotFoundException(
+        'No analysis found for this document. Run POST /documents/:id/analyze first.',
+      );
+    }
+
+    const riskFlags = await this.prisma.riskFlag.findMany({
+      where: { documentId },
+      orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return { ...savedAnalysis, riskFlags };
   }
 }

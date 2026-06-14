@@ -6,10 +6,28 @@
 export class PrismaClient {
   $connect = jest.fn().mockResolvedValue(undefined);
   $disconnect = jest.fn().mockResolvedValue(undefined);
+  $transaction = jest.fn();
+  $queryRawUnsafe = jest.fn().mockResolvedValue([]);
+  $executeRawUnsafe = jest.fn().mockResolvedValue(1);
   user = { findUnique: jest.fn(), create: jest.fn(), upsert: jest.fn() };
-  document = { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() };
-  analysis = { findUnique: jest.fn(), create: jest.fn() };
-  riskFlag = { createMany: jest.fn() };
+  document = {
+    findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    findMany: jest.fn(),
+  };
+  analysis = {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    upsert: jest.fn(),
+  };
+  riskFlag = {
+    create: jest.fn(),
+    createMany: jest.fn(),
+    findMany: jest.fn(),
+    deleteMany: jest.fn(),
+  };
   chatMessage = {
     findMany: jest.fn(),
     create: jest.fn(),
