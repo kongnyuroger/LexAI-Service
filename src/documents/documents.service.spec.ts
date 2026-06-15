@@ -13,6 +13,8 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
   },
   analysis: {
     upsert: jest.fn(),
@@ -127,6 +129,69 @@ describe('DocumentsService', () => {
         }),
       );
       expect(result.status).toBe('FAILED');
+    });
+  });
+
+  describe('findAll', () => {
+    const docs = [
+      { id: 'doc-1', originalFilename: 'a.pdf', fileType: 'application/pdf', status: 'TEXT_EXTRACTED', createdAt: new Date() },
+      { id: 'doc-2', originalFilename: 'b.pdf', fileType: 'application/pdf', status: 'ANALYZED', createdAt: new Date() },
+    ];
+
+    it('returns paginated documents and metadata', async () => {
+      mockPrisma.document.findMany.mockResolvedValue(docs);
+      mockPrisma.document.count.mockResolvedValue(2);
+
+      const result = await service.findAll('user-1', 1, 10);
+
+      expect(result.data).toEqual(docs);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(10);
+      expect(result.totalPages).toBe(1);
+    });
+
+    it('calculates correct skip offset for page 2', async () => {
+      mockPrisma.document.findMany.mockResolvedValue([]);
+      mockPrisma.document.count.mockResolvedValue(25);
+
+      await service.findAll('user-1', 2, 10);
+
+      expect(mockPrisma.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 10 }),
+      );
+    });
+
+    it('calculates totalPages correctly when items do not divide evenly', async () => {
+      mockPrisma.document.findMany.mockResolvedValue([]);
+      mockPrisma.document.count.mockResolvedValue(25);
+
+      const result = await service.findAll('user-1', 1, 10);
+
+      expect(result.totalPages).toBe(3);
+    });
+
+    it('filters documents by userId', async () => {
+      mockPrisma.document.findMany.mockResolvedValue([]);
+      mockPrisma.document.count.mockResolvedValue(0);
+
+      await service.findAll('user-99', 1, 10);
+
+      expect(mockPrisma.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'user-99' } }),
+      );
+      expect(mockPrisma.document.count).toHaveBeenCalledWith({ where: { userId: 'user-99' } });
+    });
+
+    it('orders documents newest-first', async () => {
+      mockPrisma.document.findMany.mockResolvedValue([]);
+      mockPrisma.document.count.mockResolvedValue(0);
+
+      await service.findAll('user-1', 1, 10);
+
+      expect(mockPrisma.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { createdAt: 'desc' } }),
+      );
     });
   });
 

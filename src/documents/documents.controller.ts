@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Param,
+  Query,
   NotFoundException,
   UseGuards,
   UseInterceptors,
@@ -19,9 +20,11 @@ import {
   ApiBearerAuth,
   ApiConsumes,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import { DocumentsService } from './documents.service';
+import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UsageLimitGuard } from '../users/guards/usage-limit.guard';
@@ -75,6 +78,18 @@ export class DocumentsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.documents.upload(file, user.id);
+  }
+
+  @Get()
+  @ApiOperation({ summary: "List the current user's documents (newest first, paginated)" })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns { data, total, page, limit, totalPages }.',
+  })
+  findAll(@CurrentUser() user: AuthUser, @Query() query: PaginationQueryDto) {
+    return this.documents.findAll(user.id, query.page ?? 1, query.limit ?? 10);
   }
 
   @Get(':id')

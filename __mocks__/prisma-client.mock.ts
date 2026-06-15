@@ -16,6 +16,7 @@ export class PrismaClient {
     create: jest.fn(),
     update: jest.fn(),
     findMany: jest.fn(),
+    count: jest.fn(),
   };
   analysis = {
     findUnique: jest.fn(),

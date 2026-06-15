@@ -67,6 +67,35 @@ export class DocumentsService {
     });
   }
 
+  async findAll(userId: string, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          originalFilename: true,
+          fileType: true,
+          status: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.document.count({ where: { userId } }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async findOne(documentId: string, userId: string) {
     return this.prisma.document.findFirst({
       where: { id: documentId, userId },
