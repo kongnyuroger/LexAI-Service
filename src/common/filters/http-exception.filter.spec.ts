@@ -81,4 +81,16 @@ describe('AllExceptionsFilter', () => {
     expect(() => new Date(payload.timestamp)).not.toThrow();
     expect(payload.path).toBe('/some/path');
   });
+
+  it('falls back to exception.message when HttpException body is not a string or object', () => {
+    const host = buildHost('/test');
+    const exception = new HttpException('fallback message', HttpStatus.BAD_REQUEST);
+    jest.spyOn(exception, 'getResponse').mockReturnValue(null as any);
+
+    filter.catch(exception, host as any);
+
+    expect(host.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    const payload = host.json.mock.calls[0][0];
+    expect(payload.message).toBe('fallback message');
+  });
 });
