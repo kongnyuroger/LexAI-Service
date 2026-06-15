@@ -4,9 +4,14 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-// pdf-parse is CJS-only; use require to get the callable function
+// pdf-parse v2 ships a class-based API; import the named export
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+const { PDFParse } = require('pdf-parse') as {
+  PDFParse: new (opts: { data: Buffer }) => {
+    getText(opts?: object): Promise<{ text: string }>;
+    destroy(): Promise<void>;
+  };
+};
 import mammoth from 'mammoth';
 import Tesseract from 'tesseract.js';
 
@@ -40,8 +45,14 @@ export class TextExtractionService {
   }
 
   private async extractFromPdf(buffer: Buffer): Promise<string> {
-    const data = await pdfParse(buffer);
-    const text = data.text ?? '';
+    const parser = new PDFParse({ data: buffer });
+    let text: string;
+    try {
+      const result = await parser.getText();
+      text = result.text ?? '';
+    } finally {
+      await parser.destroy();
+    }
 
     if (text.trim().length >= MIN_TEXT_LENGTH) {
       return text;
