@@ -146,6 +146,7 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] Legal knowledge base & RAG: text-embedding-3-small (1536-dim), paragraph-chunking with 50-word overlap, pgvector cosine search, context injected into analysis and chat prompts, POST /knowledge-base/sources (Task 9)
 - [x] Security hardening & API docs: Helmet, CORS (CORS_ORIGINS env var), ThrottlerModule (100 req/60s global), global AllExceptionsFilter (consistent JSON errors with timestamp + path), Swagger UI at /api/docs with bearer auth, ApiProperty on all DTOs (Task 10)
 - [x] Test coverage + GitHub Actions CI: unit tests for all services/guards/strategies/prompts/filters (112 tests, 59% statement coverage), `.github/workflows/ci.yml` runs on every push/PR (Task 11)
+- [x] Phone-number identity groundwork: `email`/`passwordHash` now optional, `phoneNumber` (unique) + `authProvider` (EMAIL/WHATSAPP) added to User, DB-level CHECK constraint requiring at least one of email/phoneNumber (WhatsApp Integration Task 1)
 
 ### Planned
 - [ ] Multilingual support (French/English)
@@ -164,3 +165,17 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 > 3. The system will chunk it, embed it, and store vectors in pgvector automatically.
 >
 > Do **not** auto-fetch copyrighted texts. Always verify you have the right to use and store the source material.
+
+---
+
+## Service-to-Service / WhatsApp Integration
+
+A separate repo, `lexai-whatsapp-bot`, bridges WhatsApp to this backend so users can upload and chat about documents from WhatsApp instead of the web/mobile app. This is built incrementally; this section is updated as each piece lands.
+
+**Status:**
+- [x] User model supports phone-number identity: `email` and `passwordHash` are now optional, `phoneNumber` (unique, nullable) and `authProvider` (`EMAIL` | `WHATSAPP`) were added. A database CHECK constraint (`email_or_phone_required`) enforces that every user has at least one of email or phoneNumber; application code is the primary safeguard, the constraint is the backstop.
+- [ ] Service-to-service API key auth (`ServiceAuthGuard`)
+- [ ] `POST /auth/whatsapp-link` phone-number user linking endpoint
+- [ ] Full integration flow documentation
+
+More detail will be added here as the remaining pieces land.

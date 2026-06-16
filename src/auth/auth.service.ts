@@ -39,7 +39,7 @@ export class AuthService {
       },
     });
 
-    const tokens = this.signTokens(user.id, user.email);
+    const tokens = this.signTokens(user.id, dto.email);
     return { ...tokens, user };
   }
 
@@ -49,11 +49,14 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    // WhatsApp-originated users have no passwordHash and can't log in this way.
+    if (!user.passwordHash) throw new UnauthorizedException('Invalid credentials');
+
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
     const { passwordHash: _, ...safeUser } = user;
-    const tokens = this.signTokens(user.id, user.email);
+    const tokens = this.signTokens(user.id, dto.email);
     return { ...tokens, user: safeUser };
   }
 
