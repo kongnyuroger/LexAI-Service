@@ -148,8 +148,8 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] Legal knowledge base & RAG: text-embedding-3-small (1536-dim), paragraph-chunking with 50-word overlap, pgvector cosine search, context injected into analysis and chat prompts, POST /knowledge-base/sources (Task 9)
 - [x] Security hardening & API docs: Helmet, CORS (CORS_ORIGINS env var), ThrottlerModule (100 req/60s global), global AllExceptionsFilter (consistent JSON errors with timestamp + path), Swagger UI at /api/docs with bearer auth, ApiProperty on all DTOs (Task 10)
 - [x] Test coverage + GitHub Actions CI: unit tests for all services/guards/strategies/prompts/filters (112 tests, 59% statement coverage), `.github/workflows/ci.yml` runs on every push/PR (Task 11)
-- [x] Phone-number identity groundwork: `email`/`passwordHash` now optional, `phoneNumber` (unique) + `authProvider` (EMAIL/WHATSAPP) added to User, DB-level CHECK constraint requiring at least one of email/phoneNumber (WhatsApp Integration Task 1)
-- [x] `GET /documents` — paginated list of the current user's documents (`page`/`limit` query params, newest-first, minimal fields without `extractedText`); usable by both web/mobile and WhatsApp-linked users since they share the same JwtAuthGuard-protected token (WhatsApp Integration Task 5)
+- [x] `GET /documents` — paginated list of the current user's documents (`page`/`limit` query params, newest-first, minimal fields without `extractedText`); usable by both web/mobile and WhatsApp-linked users since they share the same JwtAuthGuard-protected token
+- [x] Service-to-service / WhatsApp integration: phone-number user identity (optional email, `phoneNumber`, `authProvider`), `ServiceAuthGuard` + `SERVICE_API_KEY`, `POST /auth/whatsapp-link`, optional-email handling across auth flows — see [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration) below
 
 ### Planned
 - [ ] Multilingual support (French/English)
@@ -173,17 +173,31 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 
 ## Service-to-Service / WhatsApp Integration
 
-A separate repo, `lexai-whatsapp-bot`, bridges WhatsApp to this backend so users can upload and chat about documents from WhatsApp instead of the web/mobile app. This is built incrementally; this section is updated as each piece lands.
+A separate repo, `lexai-whatsapp-bot`, bridges WhatsApp to this backend so users can upload and chat about documents from WhatsApp instead of the web/mobile app. WhatsApp users never "register" in the traditional sense — their first message *is* their registration.
 
-**Status:**
-- [x] User model supports phone-number identity: `email` and `passwordHash` are now optional, `phoneNumber` (unique, nullable) and `authProvider` (`EMAIL` | `WHATSAPP`) were added. A database CHECK constraint (`email_or_phone_required`) enforces that every user has at least one of email or phoneNumber; application code is the primary safeguard, the constraint is the backstop.
-- [x] Service-to-service API key auth: `ServiceAuthGuard` checks the `X-Service-Key` header against the `SERVICE_API_KEY` env var (constant-time comparison) and rejects with 401 if missing, wrong, or unconfigured. This is intentionally a single static shared secret for one trusted internal caller — **not** a scoped, database-backed, per-service API key system. A production deployment serving multiple external services should replace this with one (hashed keys, individual revocation, per-key scopes/audit log). `ServiceAuthGuard` proves *which service* is calling; it carries no end-user identity — that's established separately (see `POST /auth/whatsapp-link` below).
-- [x] `POST /auth/whatsapp-link` (internal/service-only, behind `ServiceAuthGuard`): finds or creates a user by `phoneNumber` and returns access/refresh tokens via the same token-signing logic as `/auth/login`. Idempotent — repeated calls for the same phone number return the same user, never a duplicate. New users get `authProvider: WHATSAPP`, no password, and `fullName` from `displayName` (or `"WhatsApp User"` if omitted).
-- [x] Existing auth flows handle a null email: `/auth/register` and `/auth/login` are unchanged for web/mobile (still require email + password), but `JwtPayload.email`, `GET /auth/me`, and token signing no longer assume `user.email` is a string. `login()` explicitly rejects (401) a WhatsApp-only user who has no password rather than crashing.
-- [x] `GET /documents` (paginated list) — see Project Status / Roadmap above.
-- [x] Verified service-to-service requests aren't blocked by CORS/Helmet: `enableCors` and `helmet()` are browser-facing controls that only act on requests carrying an Origin header. A server-to-server caller like `lexai-whatsapp-bot` sends no Origin header, so neither middleware has anything to check or reject — `ServiceAuthGuard` is the only access control on that path. Locked in by an e2e regression test (`auth.e2e-spec.ts`) that calls `POST /auth/whatsapp-link` with no Origin header set and asserts success. No new env var was needed; `SERVICE_API_KEY` (Task 2) remains the single source of truth for "is this the trusted bot calling."
-- [ ] Full integration flow documentation
+### The two-layer model
 
-**Account-merging policy (MVP):** `email` and `phoneNumber` are independent unique columns with no cross-linking. If a WhatsApp user (phone, no email) later registers normally with an email — or a future flow lets a web user attach a phone number already used by a WhatsApp identity — the result today is **two separate `User` rows**, not a merge. `register()` only checks for collisions by email; `whatsappLink()` only checks by phoneNumber; the two code paths cannot collide with each other. This is a deliberate MVP simplification. Detecting and merging the same real-world person's identities (and their associated documents/history) across sign-in methods is a documented future enhancement, not implemented now.
+Two distinct problems are solved separately, and deliberately not conflated:
 
-More detail will be added here as the remaining pieces land.
+1. **Which service is calling** — `ServiceAuthGuard` checks the `X-Service-Key` header against the `SERVICE_API_KEY` env var (constant-time comparison), rejecting with 401 if missing, wrong, or unconfigured. This proves the caller is the trusted `lexai-whatsapp-bot` deployment. It is intentionally a single static shared secret for one trusted internal caller — **not** a scoped, database-backed, per-service API key system, and carries no notion of *which end-user* the request is for. A production deployment serving multiple external services should replace this with one (hashed keys, individual revocation, per-key scopes/audit log).
+2. **Which user it's acting for** — `POST /auth/whatsapp-link` (itself behind `ServiceAuthGuard`) takes a `phoneNumber` and finds-or-creates the corresponding `User`, then issues normal access/refresh tokens via the same token-signing logic as `/auth/login`. From that point on, the bot uses that token exactly like any web/mobile client — there is no special "service" mode for `/documents/*` or `/users/*`; `JwtAuthGuard` doesn't know or care that the token came from a phone-link instead of an email/password login.
+
+Both layers are required: layer 1 alone would let the bot call `/auth/whatsapp-link` but say nothing about *whose* documents to touch; layer 2 alone (no `ServiceAuthGuard`) would let anyone mint a token for any phone number with no proof they're the trusted bot.
+
+### Setting up `SERVICE_API_KEY`
+
+1. Generate a long random secret, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+2. Set it as `SERVICE_API_KEY` in this server's `.env` (never commit the real value — `.env.example` only has a placeholder).
+3. Share the same value with the `lexai-whatsapp-bot` deployment through your secrets manager or deployment platform's env var config — never in a commit, chat log, or shared doc. Rotate it by updating both deployments together; there is no rotation tooling, since this is an MVP single-secret mechanism (see above).
+
+### Full flow
+
+1. A user messages the bot on WhatsApp for the first time.
+2. `lexai-whatsapp-bot` calls `POST /auth/whatsapp-link` with header `X-Service-Key: <SERVICE_API_KEY>` and body `{ phoneNumber, displayName? }`.
+3. This backend finds or creates the `User` (idempotent — never a duplicate for the same phone number) and returns `{ accessToken, refreshToken, user }`.
+4. The bot stores that token (keyed by phone number) and uses it exactly like a web/mobile client would: `Authorization: Bearer <accessToken>` on `POST /documents/upload`, `POST /documents/:id/analyze`, `POST /documents/:id/chat`, `GET /documents`, etc.
+5. When the access token expires, the bot calls `POST /auth/refresh` with the stored refresh token, same as any other client.
+
+### Account-merging policy (MVP)
+
+`email` and `phoneNumber` are independent unique columns with no cross-linking. If a WhatsApp user (phone, no email) later registers normally with an email — or a future flow lets a web user attach a phone number already used by a WhatsApp identity — the result today is **two separate `User` rows**, not a merge. `register()` only checks for collisions by email; `whatsappLink()` only checks by phoneNumber; the two code paths structurally cannot collide with each other. This is a deliberate MVP simplification. Detecting and merging the same real-world person's identities (and their associated documents/history) across sign-in methods is a documented future enhancement, not implemented now.
