@@ -207,6 +207,26 @@ describe('Auth (e2e)', () => {
       expect(mockDb.user.create).not.toHaveBeenCalled();
       expect(res.body.user.id).toBe(testWhatsappUser.id);
     });
+
+    // Regression test: a real server-to-server caller (lexai-whatsapp-bot)
+    // sends no Origin header at all — only browsers do. This locks in that
+    // CORS (enableCors in main.ts) does not block such requests; access
+    // control here is ServiceAuthGuard (X-Service-Key) alone. Note: this
+    // request never sets an Origin header, matching how supertest/curl/any
+    // non-browser HTTP client behaves by default.
+    it('succeeds for a service-to-service request with no Origin header', async () => {
+      mockDb.user.findUnique.mockResolvedValue(testWhatsappUser);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      // supertest's Request type doesn't declare `.header`, but superagent
+      // attaches it at runtime; cast narrowly rather than widening the type.
+      expect((res.request as unknown as { header: Record<string, string> }).header.Origin).toBeUndefined();
+      expect(res.status).toBe(200);
+    });
   });
 
   // ── GET /auth/me ────────────────────────────────────────────────────────────
