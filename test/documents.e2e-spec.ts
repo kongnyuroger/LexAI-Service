@@ -34,7 +34,12 @@ const createdDoc = {
 };
 
 const mockPrismaUser = { findUnique: jest.fn() };
-const mockPrismaDoc = { create: jest.fn(), findFirst: jest.fn() };
+const mockPrismaDoc = {
+  create: jest.fn(),
+  findFirst: jest.fn(),
+  findMany: jest.fn(),
+  count: jest.fn(),
+};
 
 const mockStorage = {
   save: jest.fn().mockResolvedValue(createdDoc.storagePath),
@@ -122,6 +127,78 @@ describe('Documents (e2e)', () => {
           contentType: 'text/plain',
         });
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /documents', () => {
+    const listItem = {
+      id: createdDoc.id,
+      originalFilename: createdDoc.originalFilename,
+      fileType: createdDoc.fileType,
+      status: createdDoc.status,
+      createdAt: createdDoc.createdAt,
+    };
+
+    it('returns 401 without a token', async () => {
+      const res = await request(app.getHttpServer()).get('/documents');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns paginated documents for the current user, newest first', async () => {
+      mockPrismaDoc.findMany.mockResolvedValue([listItem]);
+      mockPrismaDoc.count.mockResolvedValue(1);
+
+      const res = await request(app.getHttpServer())
+        .get('/documents')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [{ ...listItem, createdAt: listItem.createdAt.toISOString() }],
+        total: 1,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      });
+      expect(mockPrismaDoc.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: testUser.id },
+          orderBy: { createdAt: 'desc' },
+          skip: 0,
+          take: 10,
+        }),
+      );
+    });
+
+    it('does not include extractedText in the list response', async () => {
+      mockPrismaDoc.findMany.mockResolvedValue([listItem]);
+      mockPrismaDoc.count.mockResolvedValue(1);
+
+      const res = await request(app.getHttpServer())
+        .get('/documents')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(res.body.data[0]).not.toHaveProperty('extractedText');
+      expect(mockPrismaDoc.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.not.objectContaining({ extractedText: true }),
+        }),
+      );
+    });
+
+    it('respects page and limit query params', async () => {
+      mockPrismaDoc.findMany.mockResolvedValue([]);
+      mockPrismaDoc.count.mockResolvedValue(25);
+
+      const res = await request(app.getHttpServer())
+        .get('/documents?page=2&limit=5')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ page: 2, limit: 5, total: 25, totalPages: 5 });
+      expect(mockPrismaDoc.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 5, take: 5 }),
+      );
     });
   });
 

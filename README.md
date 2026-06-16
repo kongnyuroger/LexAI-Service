@@ -149,6 +149,7 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] Security hardening & API docs: Helmet, CORS (CORS_ORIGINS env var), ThrottlerModule (100 req/60s global), global AllExceptionsFilter (consistent JSON errors with timestamp + path), Swagger UI at /api/docs with bearer auth, ApiProperty on all DTOs (Task 10)
 - [x] Test coverage + GitHub Actions CI: unit tests for all services/guards/strategies/prompts/filters (112 tests, 59% statement coverage), `.github/workflows/ci.yml` runs on every push/PR (Task 11)
 - [x] Phone-number identity groundwork: `email`/`passwordHash` now optional, `phoneNumber` (unique) + `authProvider` (EMAIL/WHATSAPP) added to User, DB-level CHECK constraint requiring at least one of email/phoneNumber (WhatsApp Integration Task 1)
+- [x] `GET /documents` — paginated list of the current user's documents (`page`/`limit` query params, newest-first, minimal fields without `extractedText`); usable by both web/mobile and WhatsApp-linked users since they share the same JwtAuthGuard-protected token (WhatsApp Integration Task 5)
 
 ### Planned
 - [ ] Multilingual support (French/English)
