@@ -91,7 +91,7 @@ describe('ChatService', () => {
         ]),
         0.3,
       );
-      expect(result).toEqual({ answer: 'The contract starts on 1 January 2024.' });
+      expect(result).toEqual({ message: { id: 'msg-2', role: 'assistant' } });
     });
 
     it('includes prior conversation history in the OpenAI request', async () => {
@@ -176,7 +176,10 @@ describe('ChatService', () => {
 
       const result = await service.getHistory('doc-1', 'user-1');
 
-      expect(result).toEqual(messages);
+      expect(result).toEqual([
+        { id: 'msg-1', role: 'user', content: 'First question', createdAt: new Date('2024-01-01') },
+        { id: 'msg-2', role: 'assistant', content: 'First answer', createdAt: new Date('2024-01-02') },
+      ]);
       expect(mockPrisma.chatMessage.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
       );

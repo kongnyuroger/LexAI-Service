@@ -3,12 +3,12 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateMessageDto {
   @ApiProperty({
-    description: 'The question to ask about the document.',
+    description: 'The message to send to the document assistant.',
     example: 'What is the notice period for termination?',
     maxLength: 2000,
   })
   @IsString()
   @IsNotEmpty()
   @MaxLength(2000)
-  question: string;
+  message!: string;
 }

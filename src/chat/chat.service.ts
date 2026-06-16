@@ -23,7 +23,7 @@ export class ChatService {
     private kb: KnowledgeBaseService,
   ) {}
 
-  async sendMessage(documentId: string, userId: string, question: string) {
+  async sendMessage(documentId: string, userId: string, message: string) {
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, userId },
     });
@@ -43,32 +43,34 @@ export class ChatService {
       select: { role: true, content: true },
     });
 
-    // Retrieve relevant legal context for the question being asked
-    const kbResults = await this.kb.search(question);
+    const kbResults = await this.kb.search(message);
     const legalContext = this.kb.formatContext(kbResults);
 
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    const openaiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: 'system', content: buildChatSystemPrompt(doc.extractedText, legalContext || undefined) },
       ...history.map((msg) => ({
         role: msg.role === 'USER' ? ('user' as const) : ('assistant' as const),
         content: msg.content,
       })),
-      { role: 'user', content: question },
+      { role: 'user', content: message },
     ];
 
-    const answer = await this.openai.chat(messages, 0.3);
+    const answer = await this.openai.chat(openaiMessages, 0.3);
 
-    // Persist user question and assistant answer atomically
-    await this.prisma.$transaction([
+    // Persist user message and assistant answer atomically; capture assistant record for response
+    const [, assistantMsg] = await this.prisma.$transaction([
       this.prisma.chatMessage.create({
-        data: { documentId, userId, role: 'USER', content: question },
+        data: { documentId, userId, role: 'USER', content: message },
       }),
       this.prisma.chatMessage.create({
         data: { documentId, userId, role: 'ASSISTANT', content: answer },
+        select: { id: true, role: true, content: true, createdAt: true },
       }),
     ]);
 
-    return { answer };
+    return {
+      message: { ...assistantMsg, role: 'assistant' as const },
+    };
   }
 
   async getHistory(documentId: string, userId: string) {
@@ -79,10 +81,15 @@ export class ChatService {
 
     if (!doc) throw new NotFoundException('Document not found');
 
-    return this.prisma.chatMessage.findMany({
+    const messages = await this.prisma.chatMessage.findMany({
       where: { documentId, userId },
       orderBy: { createdAt: 'asc' },
       select: { id: true, role: true, content: true, createdAt: true },
     });
+
+    return messages.map((msg) => ({
+      ...msg,
+      role: msg.role.toLowerCase() as 'user' | 'assistant',
+    }));
   }
 }

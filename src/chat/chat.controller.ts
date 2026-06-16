@@ -31,7 +31,7 @@ export class ChatController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateMessageDto,
   ) {
-    return this.chat.sendMessage(id, user.id, dto.question);
+    return this.chat.sendMessage(id, user.id, dto.message);
   }
 
   @Get(':id/chat')
