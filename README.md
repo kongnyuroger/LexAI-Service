@@ -92,6 +92,7 @@ Server starts on `http://localhost:3000` (or `$PORT`).
 | `OPENAI_API_KEY` | Yes | API key from platform.openai.com |
 | `STORAGE_PATH` | Yes | Local directory for uploaded files (e.g. `./uploads`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (e.g. `http://localhost:3001`) |
+| `SERVICE_API_KEY` | Yes (for WhatsApp integration) | Shared secret for trusted service-to-service callers (e.g. `lexai-whatsapp-bot`), checked by `ServiceAuthGuard` via the `X-Service-Key` header. See [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration). |
 
 ---
 
@@ -174,7 +175,7 @@ A separate repo, `lexai-whatsapp-bot`, bridges WhatsApp to this backend so users
 
 **Status:**
 - [x] User model supports phone-number identity: `email` and `passwordHash` are now optional, `phoneNumber` (unique, nullable) and `authProvider` (`EMAIL` | `WHATSAPP`) were added. A database CHECK constraint (`email_or_phone_required`) enforces that every user has at least one of email or phoneNumber; application code is the primary safeguard, the constraint is the backstop.
-- [ ] Service-to-service API key auth (`ServiceAuthGuard`)
+- [x] Service-to-service API key auth: `ServiceAuthGuard` checks the `X-Service-Key` header against the `SERVICE_API_KEY` env var (constant-time comparison) and rejects with 401 if missing, wrong, or unconfigured. This is intentionally a single static shared secret for one trusted internal caller — **not** a scoped, database-backed, per-service API key system. A production deployment serving multiple external services should replace this with one (hashed keys, individual revocation, per-key scopes/audit log). `ServiceAuthGuard` proves *which service* is calling; it carries no end-user identity — that's established separately (see `POST /auth/whatsapp-link` below).
 - [ ] `POST /auth/whatsapp-link` phone-number user linking endpoint
 - [ ] Full integration flow documentation
 
