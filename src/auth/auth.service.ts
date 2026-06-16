@@ -12,6 +12,15 @@ import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
 
 const BCRYPT_ROUNDS = 10;
 
+// MVP identity policy: email and phoneNumber are independent unique columns
+// with no cross-linking. A WhatsApp-originated user (phoneNumber, no email)
+// who later registers normally with an email gets a SEPARATE User row, not
+// a merge of the two — register() only checks for an existing row by email,
+// and whatsappLink() only checks by phoneNumber, so the two paths can never
+// collide. This is a deliberate simplification, not an oversight: account
+// merging (detecting "this is probably the same person" and unifying their
+// documents/history under one User) is a documented future enhancement, not
+// built here. See README "Service-to-Service / WhatsApp Integration".
 @Injectable()
 export class AuthService {
   constructor(

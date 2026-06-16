@@ -239,5 +239,30 @@ describe('Auth (e2e)', () => {
       expect(meRes.status).toBe(200);
       expect(meRes.body.email).toBe('e2e@lexai.cm');
     });
+
+    it('returns 200 with a null email for a WhatsApp-linked (phone-only) user', async () => {
+      // Link via WhatsApp to get a real access token for a user with no email
+      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.user.create.mockResolvedValue(testWhatsappUser);
+
+      const linkRes = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      const { accessToken } = linkRes.body;
+
+      // JwtStrategy.validate calls prisma.user.findUnique again
+      const { passwordHash: _, ...safeWaUser } = testWhatsappUser;
+      mockDb.user.findUnique.mockResolvedValue(safeWaUser);
+
+      const meRes = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(meRes.status).toBe(200);
+      expect(meRes.body.email).toBeNull();
+      expect(meRes.body.phoneNumber).toBe('+237670000000');
+    });
   });
 });

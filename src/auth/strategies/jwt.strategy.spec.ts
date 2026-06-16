@@ -55,4 +55,21 @@ describe('JwtStrategy', () => {
       UnauthorizedException,
     );
   });
+
+  it('resolves a WhatsApp-linked user whose token payload has a null email', async () => {
+    const waPayload: JwtPayload = { sub: 'user-wa-1', email: null };
+    const waUser = {
+      id: 'user-wa-1',
+      email: null,
+      fullName: 'WhatsApp User',
+      plan: 'FREE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    prisma.user.findUnique.mockResolvedValue(waUser);
+
+    const result = await strategy.validate(waPayload);
+
+    expect(result).toEqual(waUser);
+  });
 });

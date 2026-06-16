@@ -5,7 +5,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  // WhatsApp-linked users (see ServiceAuthGuard / POST /auth/whatsapp-link)
+  // have no email, so tokens may carry a null value here.
+  email: string | null;
 }
 
 @Injectable()

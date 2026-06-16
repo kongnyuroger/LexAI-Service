@@ -71,7 +71,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get the current authenticated user profile' })
-  @ApiResponse({ status: 200, description: 'Returns the user object (without passwordHash).' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns the user object (without passwordHash). email is null for ' +
+      'WhatsApp-linked users that have not also registered with an email.',
+  })
   @ApiResponse({ status: 401, description: 'Missing or invalid access token.' })
   me(@CurrentUser() user: Express.User) {
     return user;
