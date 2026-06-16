@@ -8,6 +8,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -60,9 +61,33 @@ export class AuthService {
     return { ...tokens, user: safeUser };
   }
 
+  // Finds or creates a user by phone number and issues tokens. Only reachable
+  // via ServiceAuthGuard (trusted internal callers, e.g. lexai-whatsapp-bot) —
+  // see auth.controller.ts. Idempotent: repeat calls for the same phoneNumber
+  // never create a duplicate user.
+  async whatsappLink(dto: WhatsappLinkDto) {
+    let user = await this.prisma.user.findUnique({
+      where: { phoneNumber: dto.phoneNumber },
+    });
+
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          phoneNumber: dto.phoneNumber,
+          fullName: dto.displayName?.trim() || 'WhatsApp User',
+          authProvider: 'WHATSAPP',
+        },
+      });
+    }
+
+    const { passwordHash: _, ...safeUser } = user;
+    const tokens = this.signTokens(user.id, user.email);
+    return { ...tokens, user: safeUser };
+  }
+
   async refresh(refreshToken: string) {
     try {
-      const payload = this.jwt.verify<{ sub: string; email: string }>(
+      const payload = this.jwt.verify<{ sub: string; email: string | null }>(
         refreshToken,
         { secret: process.env.JWT_REFRESH_SECRET },
       );
@@ -85,7 +110,7 @@ export class AuthService {
     }
   }
 
-  private signTokens(userId: string, email: string) {
+  private signTokens(userId: string, email: string | null) {
     const payload = { sub: userId, email };
 
     const accessToken = this.jwt.sign(payload, {

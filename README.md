@@ -120,6 +120,7 @@ npm run test:e2e
 | `POST` | `/auth/login` | None | Login, returns tokens |
 | `POST` | `/auth/refresh` | Refresh token | Get new access token |
 | `GET` | `/auth/me` | Bearer | Current user profile |
+| `POST` | `/auth/whatsapp-link` | `X-Service-Key` | **Internal/service-only.** Find or create a user by phone number, returns tokens |
 | `GET` | `/users/me/usage` | Bearer | Monthly usage stats |
 | `POST` | `/documents/upload` | Bearer | Upload a document |
 | `GET` | `/documents/:id` | Bearer | Get document status |
@@ -176,7 +177,7 @@ A separate repo, `lexai-whatsapp-bot`, bridges WhatsApp to this backend so users
 **Status:**
 - [x] User model supports phone-number identity: `email` and `passwordHash` are now optional, `phoneNumber` (unique, nullable) and `authProvider` (`EMAIL` | `WHATSAPP`) were added. A database CHECK constraint (`email_or_phone_required`) enforces that every user has at least one of email or phoneNumber; application code is the primary safeguard, the constraint is the backstop.
 - [x] Service-to-service API key auth: `ServiceAuthGuard` checks the `X-Service-Key` header against the `SERVICE_API_KEY` env var (constant-time comparison) and rejects with 401 if missing, wrong, or unconfigured. This is intentionally a single static shared secret for one trusted internal caller — **not** a scoped, database-backed, per-service API key system. A production deployment serving multiple external services should replace this with one (hashed keys, individual revocation, per-key scopes/audit log). `ServiceAuthGuard` proves *which service* is calling; it carries no end-user identity — that's established separately (see `POST /auth/whatsapp-link` below).
-- [ ] `POST /auth/whatsapp-link` phone-number user linking endpoint
+- [x] `POST /auth/whatsapp-link` (internal/service-only, behind `ServiceAuthGuard`): finds or creates a user by `phoneNumber` and returns access/refresh tokens via the same token-signing logic as `/auth/login`. Idempotent — repeated calls for the same phone number return the same user, never a duplicate. New users get `authProvider: WHATSAPP`, no password, and `fullName` from `displayName` (or `"WhatsApp User"` if omitted).
 - [ ] Full integration flow documentation
 
 More detail will be added here as the remaining pieces land.

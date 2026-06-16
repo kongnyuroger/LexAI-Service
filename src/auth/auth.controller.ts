@@ -4,12 +4,15 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { ServiceAuthGuard } from './guards/service-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 @ApiTags('auth')
@@ -32,6 +35,27 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials.' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
+  }
+
+  @Post('whatsapp-link')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ServiceAuthGuard)
+  @ApiHeader({
+    name: 'X-Service-Key',
+    description: 'Shared secret for trusted internal callers (SERVICE_API_KEY).',
+    required: true,
+  })
+  @ApiOperation({
+    summary: '[Internal/service-only] Find or create a user by phone number and issue tokens',
+    description:
+      'Not for public or frontend use — callable only by trusted internal services ' +
+      '(e.g. lexai-whatsapp-bot) presenting a valid X-Service-Key header. Idempotent: ' +
+      'repeated calls for the same phoneNumber return a fresh token for the same user, never a duplicate.',
+  })
+  @ApiResponse({ status: 200, description: 'Returns access and refresh tokens for the (possibly newly created) user.' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid X-Service-Key header.' })
+  whatsappLink(@Body() dto: WhatsappLinkDto) {
+    return this.auth.whatsappLink(dto);
   }
 
   @Post('refresh')
