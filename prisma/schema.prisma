@@ -1,13 +1,11 @@
 generator client {
-  provider        = "prisma-client"
-  output          = "../generated/prisma"
-  previewFeatures = ["postgresqlExtensions"]
-  moduleFormat    = "cjs"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
-  provider   = "postgresql"
-  extensions = [pgvector(map: "vector")]
+  provider = "postgresql"
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -36,12 +34,26 @@ enum MessageRole {
   ASSISTANT
 }
 
+enum AuthProvider {
+  EMAIL
+  WHATSAPP
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
+// email/phoneNumber are both optional at the schema level because Prisma 7
+// has no @@check attribute (validated against P1012 "Attribute not known").
+// The "at least one of email or phoneNumber" rule is enforced two ways:
+//   1. A raw CHECK constraint added by hand to the generated migration SQL
+//      (see prisma/migrations/*_add_phone_identity/migration.sql).
+//   2. Application-level validation in AuthService / the WhatsApp-link flow,
+//      which is the primary safeguard for clear error messages.
 model User {
   id           String        @id @default(uuid())
-  email        String        @unique
-  passwordHash String
+  email        String?       @unique
+  phoneNumber  String?       @unique
+  passwordHash String?
+  authProvider AuthProvider  @default(EMAIL)
   fullName     String
   plan         Plan          @default(FREE)
   createdAt    DateTime      @default(now())

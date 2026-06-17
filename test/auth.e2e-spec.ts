@@ -1,6 +1,7 @@
 // Set required env vars before any module imports
 process.env.JWT_ACCESS_SECRET = 'test-access-secret';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+process.env.SERVICE_API_KEY = 'test-service-key';
 process.env.DATABASE_URL =
   'postgresql://lexai:lexai_password@localhost:5433/lexai_db?schema=public';
 
@@ -30,6 +31,18 @@ const testUser = {
   email: 'e2e@lexai.cm',
   passwordHash: '$2b$10$hashed',
   fullName: 'E2E User',
+  plan: 'FREE',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const testWhatsappUser = {
+  id: 'e2e-wa-user-1',
+  email: null,
+  phoneNumber: '+237670000000',
+  passwordHash: null,
+  authProvider: 'WHATSAPP',
+  fullName: 'WhatsApp User',
   plan: 'FREE',
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -137,6 +150,85 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  // ── POST /auth/whatsapp-link ─────────────────────────────────────────────────
+
+  describe('POST /auth/whatsapp-link', () => {
+    it('returns 401 when X-Service-Key header is missing', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .send({ phoneNumber: '+237670000000' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 401 when X-Service-Key header is invalid', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'wrong-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 400 for an invalid phone number format', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: 'not-a-phone-number' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('creates a new user and returns tokens on first contact', async () => {
+      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.user.create.mockResolvedValue(testWhatsappUser);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000', displayName: 'WhatsApp User' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      expect(res.body.user.phoneNumber).toBe('+237670000000');
+      expect(res.body.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('is idempotent: a second call for the same phone number does not create a duplicate', async () => {
+      mockDb.user.findUnique.mockResolvedValue(testWhatsappUser);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      expect(res.status).toBe(200);
+      expect(mockDb.user.create).not.toHaveBeenCalled();
+      expect(res.body.user.id).toBe(testWhatsappUser.id);
+    });
+
+    // Regression test: a real server-to-server caller (lexai-whatsapp-bot)
+    // sends no Origin header at all — only browsers do. This locks in that
+    // CORS (enableCors in main.ts) does not block such requests; access
+    // control here is ServiceAuthGuard (X-Service-Key) alone. Note: this
+    // request never sets an Origin header, matching how supertest/curl/any
+    // non-browser HTTP client behaves by default.
+    it('succeeds for a service-to-service request with no Origin header', async () => {
+      mockDb.user.findUnique.mockResolvedValue(testWhatsappUser);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      // supertest's Request type doesn't declare `.header`, but superagent
+      // attaches it at runtime; cast narrowly rather than widening the type.
+      expect((res.request as unknown as { header: Record<string, string> }).header.Origin).toBeUndefined();
+      expect(res.status).toBe(200);
+    });
+  });
+
   // ── GET /auth/me ────────────────────────────────────────────────────────────
 
   describe('GET /auth/me', () => {
@@ -166,6 +258,31 @@ describe('Auth (e2e)', () => {
 
       expect(meRes.status).toBe(200);
       expect(meRes.body.email).toBe('e2e@lexai.cm');
+    });
+
+    it('returns 200 with a null email for a WhatsApp-linked (phone-only) user', async () => {
+      // Link via WhatsApp to get a real access token for a user with no email
+      mockDb.user.findUnique.mockResolvedValue(null);
+      mockDb.user.create.mockResolvedValue(testWhatsappUser);
+
+      const linkRes = await request(app.getHttpServer())
+        .post('/auth/whatsapp-link')
+        .set('X-Service-Key', 'test-service-key')
+        .send({ phoneNumber: '+237670000000' });
+
+      const { accessToken } = linkRes.body;
+
+      // JwtStrategy.validate calls prisma.user.findUnique again
+      const { passwordHash: _, ...safeWaUser } = testWhatsappUser;
+      mockDb.user.findUnique.mockResolvedValue(safeWaUser);
+
+      const meRes = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(meRes.status).toBe(200);
+      expect(meRes.body.email).toBeNull();
+      expect(meRes.body.phoneNumber).toBe('+237670000000');
     });
   });
 });

@@ -11,7 +11,13 @@ async function bootstrap() {
   // Security headers
   app.use(helmet());
 
-  // CORS — comma-separated origins in env var, defaulting to common dev ports
+  // CORS — comma-separated origins in env var, defaulting to common dev ports.
+  // This only matters for browser clients (lexai-web): browsers attach an
+  // Origin header and enforce CORS themselves. Server-to-server callers like
+  // lexai-whatsapp-bot send no Origin header at all, so the `cors` middleware
+  // (via enableCors) doesn't apply to or block them — it has nothing to check.
+  // ServiceAuthGuard (X-Service-Key), not CORS, is what actually authorizes
+  // that caller. See README "Service-to-Service / WhatsApp Integration".
   const rawOrigins = process.env.CORS_ORIGINS ?? 'http://localhost:3001,http://localhost:19000';
   const origins = rawOrigins.split(',').map((o) => o.trim());
   app.enableCors({ origin: origins, credentials: true });

@@ -20,6 +20,18 @@ const mockUser = {
   updatedAt: new Date(),
 };
 
+const mockWhatsappUser = {
+  id: 'user-wa-1',
+  email: null,
+  phoneNumber: '+237670000000',
+  passwordHash: null,
+  authProvider: 'WHATSAPP' as const,
+  fullName: 'WhatsApp User',
+  plan: 'FREE' as const,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
@@ -108,6 +120,61 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'test@lexai.cm', password: 'wrong' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('whatsappLink', () => {
+    it('creates a new user with a default fullName when no displayName is given', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue(mockWhatsappUser);
+
+      const result = await service.whatsappLink({
+        phoneNumber: '+237670000000',
+      });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            phoneNumber: '+237670000000',
+            fullName: 'WhatsApp User',
+            authProvider: 'WHATSAPP',
+          }),
+        }),
+      );
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('uses the provided displayName as fullName for a new user', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        ...mockWhatsappUser,
+        fullName: 'Alice N.',
+      });
+
+      await service.whatsappLink({
+        phoneNumber: '+237670000000',
+        displayName: 'Alice N.',
+      });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fullName: 'Alice N.' }),
+        }),
+      );
+    });
+
+    it('is idempotent: returns the existing user without creating a duplicate', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(mockWhatsappUser);
+
+      const result = await service.whatsappLink({
+        phoneNumber: '+237670000000',
+      });
+
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      expect(result.user.id).toBe(mockWhatsappUser.id);
+      expect(result).toHaveProperty('accessToken');
     });
   });
 

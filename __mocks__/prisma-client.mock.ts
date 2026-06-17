@@ -64,3 +64,8 @@ export enum MessageRole {
   USER = 'USER',
   ASSISTANT = 'ASSISTANT',
 }
+
+export enum AuthProvider {
+  EMAIL = 'EMAIL',
+  WHATSAPP = 'WHATSAPP',
+}
