@@ -1,12 +1,19 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
+  const app = await NestFactory.create(AppModule, {
+    logger:
+      process.env.NODE_ENV === 'production'
+        ? ['log', 'warn', 'error']
+        : ['log', 'debug', 'verbose', 'warn', 'error'],
+  });
 
   // Security headers
   app.use(helmet());
@@ -31,6 +38,7 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   // Swagger / OpenAPI docs
   const swaggerConfig = new DocumentBuilder()
@@ -52,7 +60,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  console.log(`LexAI server running on http://localhost:${port}`);
-  console.log(`API docs available at http://localhost:${port}/api/docs`);
+  logger.log(`Server running on http://localhost:${port}`);
+  logger.log(`API docs available at http://localhost:${port}/api/docs`);
 }
 bootstrap();
