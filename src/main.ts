@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -9,11 +10,18 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
     logger:
       process.env.NODE_ENV === 'production'
         ? ['log', 'warn', 'error']
         : ['log', 'debug', 'verbose', 'warn', 'error'],
   });
+
+  // bodyParser disabled above so we can raise the limit past Express's
+  // 100kb default — needed for large pasted legal texts (e.g. full
+  // statute/code documents) submitted to /knowledge-base/sources.
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   // Security headers
   app.use(helmet());
