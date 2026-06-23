@@ -6,18 +6,24 @@ process.env.DATABASE_URL =
   'postgresql://lexai:lexai_password@localhost:5433/lexai_db?schema=public';
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { SupabaseService } from '../src/supabase/supabase.service';
 
 // Shared mock state so individual tests can control DB responses
 const mockDb = {
   user: {
     findUnique: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
   },
+};
+
+const mockSupabase = {
+  verifyToken: jest.fn(),
 };
 
 jest.mock('bcrypt', () => ({
@@ -48,6 +54,29 @@ const testWhatsappUser = {
   updatedAt: new Date(),
 };
 
+const testGoogleUser = {
+  id: 'e2e-google-user-1',
+  email: 'e2e-google@gmail.com',
+  phoneNumber: null,
+  googleId: 'google-sub-e2e-1',
+  avatarUrl: 'https://lh3.googleusercontent.com/e2e.jpg',
+  passwordHash: null,
+  authProvider: 'GOOGLE',
+  fullName: 'E2E Google User',
+  plan: 'FREE',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const googleSupabaseProfile = {
+  id: 'google-sub-e2e-1',
+  email: 'e2e-google@gmail.com',
+  user_metadata: {
+    full_name: 'E2E Google User',
+    avatar_url: 'https://lh3.googleusercontent.com/e2e.jpg',
+  },
+};
+
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
 
@@ -57,6 +86,8 @@ describe('Auth (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue({ user: mockDb.user })
+      .overrideProvider(SupabaseService)
+      .useValue(mockSupabase)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -147,6 +178,84 @@ describe('Auth (e2e)', () => {
         .send({ email: 'e2e@lexai.cm', password: 'wrong' });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  // ── POST /auth/google ───────────────────────────────────────────────────────
+
+  describe('POST /auth/google', () => {
+    it('returns 400 when accessToken is missing', async () => {
+      const res = await request(app.getHttpServer()).post('/auth/google').send({});
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 401 when the Supabase token is invalid', async () => {
+      mockSupabase.verifyToken.mockRejectedValue(
+        new UnauthorizedException('Invalid or expired Google session'),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google')
+        .send({ accessToken: 'bad-token' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('creates a new user and returns tokens on first Google sign-in', async () => {
+      mockSupabase.verifyToken.mockResolvedValue(googleSupabaseProfile);
+      mockDb.user.findUnique
+        .mockResolvedValueOnce(null) // lookup by googleId
+        .mockResolvedValueOnce(null); // lookup by email
+      mockDb.user.create.mockResolvedValue(testGoogleUser);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google')
+        .send({ accessToken: 'supabase-access-token' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body).toHaveProperty('refreshToken');
+      expect(res.body.user.email).toBe('e2e-google@gmail.com');
+      expect(res.body.user).not.toHaveProperty('passwordHash');
+    });
+
+    it('links an existing email/password user onto the same record (no duplicate)', async () => {
+      const existingEmailUser = { ...testUser, googleId: null, avatarUrl: null };
+      mockSupabase.verifyToken.mockResolvedValue({
+        id: 'google-sub-e2e-1',
+        email: testUser.email,
+        user_metadata: { full_name: 'E2E User', avatar_url: 'https://lh3.googleusercontent.com/x.jpg' },
+      });
+      mockDb.user.findUnique
+        .mockResolvedValueOnce(null) // lookup by googleId — not found
+        .mockResolvedValueOnce(existingEmailUser); // lookup by email — found
+      mockDb.user.update.mockResolvedValue({
+        ...existingEmailUser,
+        googleId: 'google-sub-e2e-1',
+        avatarUrl: 'https://lh3.googleusercontent.com/x.jpg',
+        authProvider: 'GOOGLE',
+      });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google')
+        .send({ accessToken: 'supabase-access-token' });
+
+      expect(res.status).toBe(200);
+      expect(mockDb.user.create).not.toHaveBeenCalled();
+      expect(res.body.user.id).toBe(existingEmailUser.id);
+    });
+
+    it('returns fresh tokens for a returning Google user', async () => {
+      mockSupabase.verifyToken.mockResolvedValue(googleSupabaseProfile);
+      mockDb.user.findUnique.mockResolvedValueOnce(testGoogleUser); // found by googleId
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google')
+        .send({ accessToken: 'supabase-access-token' });
+
+      expect(res.status).toBe(200);
+      expect(mockDb.user.create).not.toHaveBeenCalled();
+      expect(res.body.user.id).toBe(testGoogleUser.id);
     });
   });
 

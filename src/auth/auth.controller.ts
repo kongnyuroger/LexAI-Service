@@ -11,6 +11,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ServiceAuthGuard } from './guards/service-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -35,6 +36,23 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials.' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
+  }
+
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login or register via Supabase-bridged Google OAuth',
+    description:
+      'Verifies the Supabase session access token (obtained by the web app after the ' +
+      'Google OAuth redirect), then finds or creates the matching user and issues our ' +
+      'standard access/refresh tokens. A user who previously registered with email/' +
+      'password and signs in with Google using the same email is linked onto the same ' +
+      'account rather than creating a duplicate.',
+  })
+  @ApiResponse({ status: 200, description: 'Returns access and refresh tokens.' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired Supabase access token.' })
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.auth.googleLogin(dto.accessToken);
   }
 
   @Post('whatsapp-link')

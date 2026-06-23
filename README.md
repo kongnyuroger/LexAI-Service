@@ -120,6 +120,7 @@ npm run test:e2e
 | `GET` | `/health` | None | Health check |
 | `POST` | `/auth/register` | None | Register a new user |
 | `POST` | `/auth/login` | None | Login, returns tokens |
+| `POST` | `/auth/google` | None | Login/register via Supabase-bridged Google OAuth, returns tokens. See [Google OAuth Setup](#google-oauth-setup). |
 | `POST` | `/auth/refresh` | Refresh token | Get new access token |
 | `GET` | `/auth/me` | Bearer | Current user profile |
 | `POST` | `/auth/whatsapp-link` | `X-Service-Key` | **Internal/service-only.** Find or create a user by phone number, returns tokens |
