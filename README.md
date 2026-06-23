@@ -93,6 +93,8 @@ Server starts on `http://localhost:3000` (or `$PORT`).
 | `STORAGE_PATH` | Yes | Local directory for uploaded files (e.g. `./uploads`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (e.g. `http://localhost:3001`) |
 | `SERVICE_API_KEY` | Yes (for WhatsApp integration) | Shared secret for trusted service-to-service callers (e.g. `lexai-whatsapp-bot`), checked by `ServiceAuthGuard` via the `X-Service-Key` header. See [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration). |
+| `SUPABASE_URL` | Yes (for Google OAuth) | Your Supabase project URL, used only to verify Google OAuth tokens. See [Google OAuth Setup](#google-oauth-setup). |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes (for Google OAuth) | Supabase service role key (Settings → API) — required to verify tokens server-side. Never expose this to clients. |
 
 ---
 
