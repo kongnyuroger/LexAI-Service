@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { SupabaseModule } from './supabase/supabase.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -17,6 +18,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
     // 100 requests per 60 seconds per IP (applies globally)
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    SupabaseModule,
     AuthModule,
     UsersModule,
     DocumentsModule,

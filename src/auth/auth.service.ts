@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
@@ -26,6 +27,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private supabase: SupabaseService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -87,6 +89,48 @@ export class AuthService {
           authProvider: 'WHATSAPP',
         },
       });
+    }
+
+    const { passwordHash: _, ...safeUser } = user;
+    const tokens = this.signTokens(user.id, user.email);
+    return { ...tokens, user: safeUser };
+  }
+
+  // Verifies a Supabase-issued access token (the bridge for Google OAuth —
+  // see SupabaseService), then finds or creates the matching User and issues
+  // our own standard tokens. Lookup order is googleId first, then email, so
+  // a user who previously registered with email/password and later signs in
+  // with Google on the same address gets linked onto ONE User row instead of
+  // creating a duplicate.
+  async googleLogin(accessToken: string) {
+    const profile = await this.supabase.verifyToken(accessToken);
+    const googleId = profile.id;
+    const email = profile.email;
+    const fullName = profile.user_metadata.full_name?.trim() || 'Google User';
+    const avatarUrl = profile.user_metadata.avatar_url ?? null;
+
+    let user = await this.prisma.user.findUnique({ where: { googleId } });
+
+    if (!user) {
+      const existingByEmail = await this.prisma.user.findUnique({ where: { email } });
+
+      if (existingByEmail) {
+        user = await this.prisma.user.update({
+          where: { id: existingByEmail.id },
+          data: { googleId, avatarUrl, authProvider: 'GOOGLE' },
+        });
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            googleId,
+            email,
+            fullName,
+            avatarUrl,
+            authProvider: 'GOOGLE',
+            plan: 'FREE',
+          },
+        });
+      }
     }
 
     const { passwordHash: _, ...safeUser } = user;

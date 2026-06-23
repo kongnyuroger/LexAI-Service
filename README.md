@@ -93,6 +93,8 @@ Server starts on `http://localhost:3000` (or `$PORT`).
 | `STORAGE_PATH` | Yes | Local directory for uploaded files (e.g. `./uploads`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (e.g. `http://localhost:3001`) |
 | `SERVICE_API_KEY` | Yes (for WhatsApp integration) | Shared secret for trusted service-to-service callers (e.g. `lexai-whatsapp-bot`), checked by `ServiceAuthGuard` via the `X-Service-Key` header. See [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration). |
+| `SUPABASE_URL` | Yes (for Google OAuth) | Your Supabase project URL, used only to verify Google OAuth tokens. See [Google OAuth Setup](#google-oauth-setup). |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes (for Google OAuth) | Supabase service role key (Settings → API) — required to verify tokens server-side. Never expose this to clients. |
 
 ---
 
@@ -118,6 +120,7 @@ npm run test:e2e
 | `GET` | `/health` | None | Health check |
 | `POST` | `/auth/register` | None | Register a new user |
 | `POST` | `/auth/login` | None | Login, returns tokens |
+| `POST` | `/auth/google` | None | Login/register via Supabase-bridged Google OAuth, returns tokens. See [Google OAuth Setup](#google-oauth-setup). |
 | `POST` | `/auth/refresh` | Refresh token | Get new access token |
 | `GET` | `/auth/me` | Bearer | Current user profile |
 | `POST` | `/auth/whatsapp-link` | `X-Service-Key` | **Internal/service-only.** Find or create a user by phone number, returns tokens |
@@ -150,6 +153,8 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] Test coverage + GitHub Actions CI: unit tests for all services/guards/strategies/prompts/filters (112 tests, 59% statement coverage), `.github/workflows/ci.yml` runs on every push/PR (Task 11)
 - [x] `GET /documents` — paginated list of the current user's documents (`page`/`limit` query params, newest-first, minimal fields without `extractedText`); usable by both web/mobile and WhatsApp-linked users since they share the same JwtAuthGuard-protected token
 - [x] Service-to-service / WhatsApp integration: phone-number user identity (optional email, `phoneNumber`, `authProvider`), `ServiceAuthGuard` + `SERVICE_API_KEY`, `POST /auth/whatsapp-link`, optional-email handling across auth flows — see [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration) below
+- [x] Google OAuth identity fields on `User`: `googleId` (unique, nullable), `avatarUrl` (nullable), `GOOGLE` added to `AuthProvider` enum — schema groundwork for Supabase-bridged Google sign-in (see Google OAuth Setup below)
+- [x] `POST /auth/google` — Supabase-bridged Google OAuth login/registration with account-linking by email; `GET /auth/me` now also returns `avatarUrl` and `authProvider` (typed via `UserResponseDto`) for all auth methods
 
 ### Planned
 - [ ] Multilingual support (French/English)
@@ -201,3 +206,29 @@ Both layers are required: layer 1 alone would let the bot call `/auth/whatsapp-l
 ### Account-merging policy (MVP)
 
 `email` and `phoneNumber` are independent unique columns with no cross-linking. If a WhatsApp user (phone, no email) later registers normally with an email — or a future flow lets a web user attach a phone number already used by a WhatsApp identity — the result today is **two separate `User` rows**, not a merge. `register()` only checks for collisions by email; `whatsappLink()` only checks by phoneNumber; the two code paths structurally cannot collide with each other. This is a deliberate MVP simplification. Detecting and merging the same real-world person's identities (and their associated documents/history) across sign-in methods is a documented future enhancement, not implemented now.
+
+---
+
+## Google OAuth Setup
+
+Users can sign in with Google. **Supabase is used only as a Google OAuth bridge** — it verifies the Google sign-in and hands back the user's Google profile (email, name, avatar). This backend never uses Supabase's database, session management, or JWTs for anything beyond that single verification call; our own Postgres + our own JWT remain the source of truth. After `POST /auth/google` completes, the client holds a standard LexAI JWT — indistinguishable from one issued by `/auth/login` or `/auth/whatsapp-link`, and protected by the same `JwtAuthGuard` on every subsequent request.
+
+### The flow
+
+1. The web app redirects the user to Supabase's Google OAuth URL.
+2. Google authenticates the user and redirects back to Supabase.
+3. Supabase redirects to the web app with a Supabase session access token.
+4. The web app sends that token to this backend: `POST /auth/google` with body `{ accessToken }`.
+5. This backend calls `SupabaseService.verifyToken()`, which verifies the token with Supabase and returns the Google profile (`id`, `email`, `user_metadata.full_name`, `user_metadata.avatar_url`). The Supabase access token itself is never stored or logged — it's a one-time credential for this single verification call.
+6. `AuthService.googleLogin()` finds the matching `User` by `googleId`, falling back to `email` — this links an existing email/password account to the same Google profile (one `User` row, multiple login methods) instead of creating a duplicate. If no match exists at all, a new `User` is created with `authProvider: GOOGLE`.
+7. This backend issues standard access + refresh tokens via the same `signTokens` logic used by every other auth method, and returns them to the web app exactly like `/auth/login` does.
+
+### Setting up Supabase
+
+1. Create a project at [supabase.com](https://supabase.com) and enable the Google provider under **Authentication → Providers** — see [Supabase's Google OAuth guide](https://supabase.com/docs/guides/auth/social-login/auth-google) for the Google Cloud Console setup (OAuth client ID/secret, authorized redirect URI) and for wiring the *frontend* redirect flow described above.
+2. In the Supabase dashboard, go to **Settings → API** and copy:
+   - **Project URL** → `SUPABASE_URL`
+   - **service_role key** (not the `anon` key — the service role key is required to verify tokens server-side without RLS restrictions) → `SUPABASE_SERVICE_ROLE_KEY`
+3. Set both in this server's `.env` (never commit the real values — `.env.example` only has placeholders).
+
+`SupabaseService` builds its client lazily on first use, not at app startup, so this backend still boots without these env vars set if Google OAuth isn't needed yet (e.g. local dev before Supabase is configured).
