@@ -154,6 +154,7 @@ Full interactive docs: **`http://localhost:3000/api/docs`** (Swagger UI, added i
 - [x] `GET /documents` — paginated list of the current user's documents (`page`/`limit` query params, newest-first, minimal fields without `extractedText`); usable by both web/mobile and WhatsApp-linked users since they share the same JwtAuthGuard-protected token
 - [x] Service-to-service / WhatsApp integration: phone-number user identity (optional email, `phoneNumber`, `authProvider`), `ServiceAuthGuard` + `SERVICE_API_KEY`, `POST /auth/whatsapp-link`, optional-email handling across auth flows — see [Service-to-Service / WhatsApp Integration](#service-to-service--whatsapp-integration) below
 - [x] Google OAuth identity fields on `User`: `googleId` (unique, nullable), `avatarUrl` (nullable), `GOOGLE` added to `AuthProvider` enum — schema groundwork for Supabase-bridged Google sign-in (see Google OAuth Setup below)
+- [x] `POST /auth/google` — Supabase-bridged Google OAuth login/registration with account-linking by email; `GET /auth/me` now also returns `avatarUrl` and `authProvider` (typed via `UserResponseDto`) for all auth methods
 
 ### Planned
 - [ ] Multilingual support (French/English)

@@ -367,6 +367,7 @@ describe('Auth (e2e)', () => {
 
       expect(meRes.status).toBe(200);
       expect(meRes.body.email).toBe('e2e@lexai.cm');
+      expect(meRes.body).not.toHaveProperty('passwordHash');
     });
 
     it('returns 200 with a null email for a WhatsApp-linked (phone-only) user', async () => {
@@ -392,6 +393,35 @@ describe('Auth (e2e)', () => {
       expect(meRes.status).toBe(200);
       expect(meRes.body.email).toBeNull();
       expect(meRes.body.phoneNumber).toBe('+237670000000');
+      expect(meRes.body).not.toHaveProperty('passwordHash');
+    });
+
+    it('returns avatarUrl and authProvider for a Google-linked user', async () => {
+      // Sign in with Google to get a real access token
+      mockSupabase.verifyToken.mockResolvedValue(googleSupabaseProfile);
+      mockDb.user.findUnique
+        .mockResolvedValueOnce(null) // lookup by googleId
+        .mockResolvedValueOnce(null); // lookup by email
+      mockDb.user.create.mockResolvedValue(testGoogleUser);
+
+      const googleRes = await request(app.getHttpServer())
+        .post('/auth/google')
+        .send({ accessToken: 'supabase-access-token' });
+
+      const { accessToken } = googleRes.body;
+
+      // JwtStrategy.validate calls prisma.user.findUnique again
+      const { passwordHash: _, ...safeGoogleUser } = testGoogleUser;
+      mockDb.user.findUnique.mockResolvedValue(safeGoogleUser);
+
+      const meRes = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`);
+
+      expect(meRes.status).toBe(200);
+      expect(meRes.body.avatarUrl).toBe('https://lh3.googleusercontent.com/e2e.jpg');
+      expect(meRes.body.authProvider).toBe('GOOGLE');
+      expect(meRes.body).not.toHaveProperty('passwordHash');
     });
   });
 });

@@ -13,6 +13,9 @@ describe('JwtStrategy', () => {
   const mockUser = {
     id: 'user-123',
     email: 'user@lexai.cm',
+    phoneNumber: null,
+    avatarUrl: null,
+    authProvider: 'EMAIL',
     fullName: 'Test User',
     plan: 'FREE',
     createdAt: new Date(),
@@ -43,9 +46,24 @@ describe('JwtStrategy', () => {
 
     expect(prisma.user.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ id: true, email: true, plan: true }),
+        select: expect.objectContaining({
+          id: true,
+          email: true,
+          avatarUrl: true,
+          authProvider: true,
+          plan: true,
+        }),
       }),
     );
+  });
+
+  it('never selects passwordHash', async () => {
+    prisma.user.findUnique.mockResolvedValue(mockUser);
+
+    await strategy.validate(payload);
+
+    const call = prisma.user.findUnique.mock.calls[0][0];
+    expect(call.select).not.toHaveProperty('passwordHash');
   });
 
   it('throws UnauthorizedException when the user is not found', async () => {

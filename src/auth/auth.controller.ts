@@ -12,6 +12,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { WhatsappLinkDto } from './dto/whatsapp-link.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ServiceAuthGuard } from './guards/service-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -93,7 +94,9 @@ export class AuthController {
     status: 200,
     description:
       'Returns the user object (without passwordHash). email is null for ' +
-      'WhatsApp-linked users that have not also registered with an email.',
+      'WhatsApp-linked users that have not also registered with an email. ' +
+      'avatarUrl is set for Google-linked accounts, null otherwise.',
+    type: UserResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid access token.' })
   me(@CurrentUser() user: Express.User) {
