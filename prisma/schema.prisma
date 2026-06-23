@@ -37,6 +37,7 @@ enum MessageRole {
 enum AuthProvider {
   EMAIL
   WHATSAPP
+  GOOGLE
 }
 
 // ─── Models ───────────────────────────────────────────────────────────────────
@@ -52,6 +53,8 @@ model User {
   id           String        @id @default(uuid())
   email        String?       @unique
   phoneNumber  String?       @unique
+  googleId     String?       @unique
+  avatarUrl    String?
   passwordHash String?
   authProvider AuthProvider  @default(EMAIL)
   fullName     String
