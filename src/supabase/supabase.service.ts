@@ -1,5 +1,6 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 export interface SupabaseUser {
   id: string;
@@ -31,7 +32,16 @@ export class SupabaseService {
           'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set to verify Google OAuth tokens',
         );
       }
-      this.client = createClient(url, key);
+      // Node 20 has no native WebSocket, which SupabaseClient's (unused)
+      // realtime client requires eagerly at construction time — supply `ws`
+      // explicitly rather than depending on the runtime's native support.
+      // Cast needed: `ws`'s typings declare an overloaded constructor
+      // (including a `(address: null)` variant) that TS won't structurally
+      // match against the single-signature `transport` type, even though
+      // `ws` is a fully compatible WebSocket implementation at runtime.
+      this.client = createClient(url, key, {
+        realtime: { transport: WebSocket as unknown as never },
+      });
     }
     return this.client;
   }
